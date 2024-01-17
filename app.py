@@ -1,4 +1,4 @@
-from dash import html, dcc, dash_table, Output, Input, State, callback
+from dash import html, dcc, dash_table, Output, Input, State, callback, ctx
 from dash_extensions.enrich import DashProxy, BlockingCallbackTransform
 from dash_dangerously_set_inner_html import DangerouslySetInnerHTML as dhtml
 from dash.dash_table.Format import Format, Scheme, Trim
@@ -63,6 +63,7 @@ app.layout = html.Div([
                 id='graph',
                 style={'margin-top': '50px'}
             ),
+            dcc.Store(id='clicks'),
             dash_table.DataTable(
                 id='full_table',
                 row_selectable='multi',
@@ -97,7 +98,30 @@ app.layout = html.Div([
         children=[
             html.Div(id='mol_grid'),
             dash_table.DataTable(
-                id='filtered_table'
+                id='filtered_table',
+                row_selectable='multi',
+                filter_action='native',
+                page_size=50,
+                style_data_conditional=[{
+                    'if': {'column_id': 'SMILES'},
+                    'overflow': 'hidden',
+                    'textOverflow': 'ellipsis',
+                    'maxWidth': 0
+                }],
+                style_table={
+                    'height': '300px',
+                    'overflowY': 'auto' 
+                },
+                tooltip_duration=None,
+                css=[{
+                    'selector': '.dash-table-tooltip',
+                    'rule': """
+                        background-color: black;
+                        width: fit-content; 
+                        max-width: unset;
+                        color: white
+                    """
+                }]
             )
         ],
         className='six columns'
@@ -107,39 +131,70 @@ app.layout = html.Div([
 
 @callback(
     Output('graph', 'figure', allow_duplicate=True),
+    Output('clicks', 'data', allow_duplicate=True),
     Input('og_graph', 'data'),
+    Input('graph', 'clickData'),
     Input('full_table', 'selected_rows'),
     State('graph_option', 'value'),
     State('full_table', 'data'),
     State('full_table', 'selected_columns'),
+    State('clicks', 'data'),
     prevent_initial_call=True
 )
-def pick_datapoint(fig, rows, value, data, columns):
-    if rows is None or len(rows) == 0:
-        return fig
-    
+def pick_datapoint(fig, click, rows, value, data, columns, clicked_points):    
     if value == 'Histogram':
-        x_vals = set([data[row][columns[0]] for row in rows])
-        fig['layout']['shapes'] = []
-        for x in x_vals:
-            fig['layout']['shapes'].append({
-                'line': {'color': 'red'},
-                'type': 'line',
-                'x0': x,
-                'x1': x,
-                'xref': 'x',
-                'y0': 0,
-                'y1': 1,
-                'yref': 'y domain'
-            })
+        if rows is not None:
+            x_vals = set([data[row][columns[0]] for row in rows])
+            fig['layout']['shapes'] = []
+            for x in x_vals:
+                fig['layout']['shapes'].append({
+                    'line': {'color': 'red'},
+                    'type': 'line',
+                    'x0': x,
+                    'x1': x,
+                    'xref': 'x',
+                    'y0': 0,
+                    'y1': 1,
+                    'yref': 'y domain'
+                })
+        clicked_points['Histogram'][0] = set(clicked_points['Histogram'][0])
+        if ctx.triggered_id == 'graph':
+            if click['points'][0]['binNumber'] in clicked_points['Histogram'][0]:
+                clicked_points['Histogram'][0].remove(click['points'][0]['binNumber'])
+            else:
+                clicked_points['Histogram'][0].add(click['points'][0]['binNumber'])
+        colors = []
+        for i in range(clicked_points['Histogram'][1]):
+            if i in clicked_points['Histogram'][0]:
+                colors.append('red')
+            else:
+                colors.append('blue')
+
+        fig['data'][0]['marker'] = {'color': colors}
+        clicked_points['Histogram'][0] = list(clicked_points['Histogram'][0])
     else:
         if len(columns) < 2:
-            return fig
+            return fig, clicked_points
         else:
-            point_values = set([
-                (data[row][columns[0]], data[row][columns[1]]) 
-                for row in rows
-            ])
+            clicked_points['Scatter'] = {
+                tuple(point) for point in clicked_points['Scatter']
+            }
+            if ctx.triggered_id == 'graph':
+                if (click['points'][0]['x'], click['points'][0]['y']) in clicked_points['Scatter']:
+                    clicked_points['Scatter'].remove((
+                        click['points'][0]['x'],
+                        click['points'][0]['y']
+                    ))
+                else:
+                    clicked_points['Scatter'].add((
+                        click['points'][0]['x'],
+                        click['points'][0]['y']
+                    ))
+            point_values = set()
+            if rows is not None:
+                for row in rows:
+                    point_values.add((data[row][columns[0]], data[row][columns[1]]))
+            red_points = point_values.update(clicked_points['Scatter'])
             colors = []
             for x, y in zip(fig['data'][0]['x'], fig['data'][0]['y']):
                 if (x, y) in point_values:
@@ -147,13 +202,15 @@ def pick_datapoint(fig, rows, value, data, columns):
                 else:
                     colors.append('blue')
             fig['data'][0]['marker'] = {'color': colors}
-    return fig
+            clicked_points['Scatter'] = list(clicked_points['Scatter'])
+    return fig, clicked_points
 
 
 
 @callback(
     [
         Output('og_graph', 'data'),
+        Output('clicks', 'data'),
         Output('full_table', 'selected_columns', allow_duplicate=True)
     ],
     Input('full_table', 'derived_filter_query_structure'),
@@ -168,7 +225,8 @@ def create_graph(query, col, data, option):
         query_string, df = util.construct_filter(query, df)
         if query_string != '':
             df = df.query(query_string)
-    
+    num_unique = df[col[0]].nunique()
+
     if option == "Histogram":
         fig = go.Figure(data=go.Histogram(x=df[col[0]], marker={'color': 'blue'}))
         col = [col[0]]
@@ -182,7 +240,7 @@ def create_graph(query, col, data, option):
                 text=["Please select x and y columns"],
                 textposition="top center" 
             ))
-            return fig, col
+            return fig, {'Histogram': ([], num_unique), 'Scatter': []}, col
         if len(col) > 2:
             col = col[-2:]
         fig = go.Figure(
@@ -196,7 +254,7 @@ def create_graph(query, col, data, option):
         )
     fig.update_layout(margin={'l': 10, 'r': 10, 'b': 10, 't': 10}, showlegend=False)
 
-    return fig, col
+    return fig, {'Histogram': ([], num_unique), 'Scatter': []}, col
 
 
 @callback(
