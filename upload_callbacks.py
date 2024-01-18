@@ -34,9 +34,10 @@ def callbacks_upload(app):
         df['desc'] = df['mol'].apply(util.calc_descriptors)
         desc_cols = ['MW', 'LogP', 'NumAromatic', 'HBD', 'HBA']
         df[desc_cols] = df['desc'].to_list()
+        df['index'] = df.index
         df = df.rename(columns={smiles_col: 'SMILES'})
         df = df.drop(columns=['mol', 'desc'])
-
+        df = df[['index', 'SMILES', 'Cluster'] + desc_cols]
         return dcc.Store(
             id='smiles_data_store', 
             data=[

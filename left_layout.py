@@ -20,6 +20,7 @@ def left():
                 style={'margin-top': '50px'}
             ),
             dcc.Store(id='clicks'),
+            dcc.Store(id='index_map'),
             dash_table.DataTable(
                 id='full_table',
                 row_selectable='multi',

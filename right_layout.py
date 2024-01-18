@@ -5,9 +5,10 @@ def right():
     return html.Div(
         children=[
             html.Div(id='mol_grid'),
+            dcc.Store(id='filtered_rows', data=[]),
             dash_table.DataTable(
                 id='filtered_table',
-                row_selectable='multi',
+                data=[],
                 filter_action='native',
                 page_size=50,
                 style_data_conditional=[{
@@ -21,6 +22,8 @@ def right():
                     'overflowY': 'auto' 
                 },
                 tooltip_duration=None,
+                row_deletable=True,
+                row_selectable='multi',
                 css=[{
                     'selector': '.dash-table-tooltip',
                     'rule': """
@@ -30,7 +33,8 @@ def right():
                         color: white
                     """
                 }]
-            )
+            ),
+            html.Button('Reset', id='reset_button')
         ],
         className='six columns'
     )
