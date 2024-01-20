@@ -1,4 +1,4 @@
-def populate_filtered_table_histogram(data, children, rows, click, filtered_rows):
+def populate_filtered_table_histogram(data, children, rows, click, filtered_rows, selected_mol):
     if rows is None:
         rows = []
     initial_rows = set(rows)
@@ -39,11 +39,12 @@ def populate_filtered_table_histogram(data, children, rows, click, filtered_rows
         [data[row] for row in data_rows],
         [children['props']['data'][2][row] for row in data_rows], 
         style_data_conditional, 
+        [i for i, row in enumerate(data_rows) if row in selected_mol],
         data_rows
     )
 
 
-def populate_filtered_table_scatter(data, children, rows, click, filtered_rows):
+def populate_filtered_table_scatter(data, children, rows, click, filtered_rows, selected_mol):
     if rows is None:
         rows = []
     initial_rows = set(rows)
@@ -83,5 +84,6 @@ def populate_filtered_table_scatter(data, children, rows, click, filtered_rows):
         [data[row] for row in data_rows],
         [children['props']['data'][2][row] for row in data_rows], 
         style_data_conditional, 
+        [i for i, row in enumerate(data_rows) if row in selected_mol],
         data_rows
     )

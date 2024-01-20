@@ -4,7 +4,15 @@ from dash import html, dcc, dash_table
 def right():
     return html.Div(
         children=[
-            html.Div(id='mol_grid'),
+            dcc.Store(id='selected_mol', data=[]),
+            html.Div(
+                id='mol_grid', 
+                style={
+                    'border': '2px black solid',
+                    'height': '530px',
+                    'overflowY': 'scroll'
+                }
+            ),
             dcc.Store(id='filtered_rows', data=[]),
             dash_table.DataTable(
                 id='filtered_table',
